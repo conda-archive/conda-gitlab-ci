@@ -33,7 +33,7 @@ def test_submit_build(set_ci_environ_vars):
                   'http://some.test.ci.com/api/v3/projects/2/trigger/builds',
                   status=201,
                   json={'id': 1, 'variables': {'BUILD_RECIPE': 'frank'}},
-    )
+                  )
     vars = {"variables": {"BUILD_RECIPE": "frank"}}
     assert trigger_gitlab.submit_build(vars, '123abc') == 1
 

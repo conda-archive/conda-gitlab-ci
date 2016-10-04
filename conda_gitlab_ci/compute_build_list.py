@@ -2,47 +2,21 @@
 from __future__ import print_function, division
 
 import argparse
-import psutil
 import os
 import subprocess
 import time
 import networkx as nx
-import sys
 
 from conda_build import api
-from conda_build.metadata import MetaData, find_recipe
+from conda_build.metadata import find_recipe
 
 
 CONDA_BUILD_CACHE = os.environ.get("CONDA_BUILD_CACHE")
 
 
-def last_changed_git_branch(git_root):
-    args = ['git', 'for-each-ref',
-            '--sort=-committerdate', 'refs/heads/', ]
-    proc = subprocess.Popen(args,
-                            cwd=git_root,
-                            stdout=subprocess.PIPE)
-    if proc.wait():
-        raise ValueError('Bad return code '
-                         'from git branch sort', proc.poll())
-    head_1 = proc.stdout.read().decode().splitlines()[0]
-    branch = head_1.split()[-1]
-    print('Last changed branch: ', branch)
-    return branch
-
-
-def git_changed_files(git_rev, stop_rev=None, git_root=''):
-    """
-    Get the list of files changed in a git revision and return a list of
-    package directories that have been modified.
-
-    git_rev: if stop_rev is not provided, this represents the changes
-             introduced by the given git rev.  It is equivalent to
-             git_rev=SOME_REV~1 and stop_rev=SOME_REV
-
-    stop_rev: when provided, this is the end of a range of revisions to
-             consider.  git_rev becomes the start revision.
-    """
+def _git_changed_files(git_rev, stop_rev=None, git_root=''):
+    if not git_root:
+        git_root = os.getcwd()
     if stop_rev:
         git_rev = "{0}..{1}".format(git_rev, stop_rev)
     proc = subprocess.Popen(['git', 'diff-tree', '--no-commit-id',
@@ -53,11 +27,41 @@ def git_changed_files(git_rev, stop_rev=None, git_root=''):
     if proc.wait():
         raise ValueError('Bad git return code: {}'.format(proc.poll()))
     files = proc.stdout.read().decode().splitlines()
+    if '.git' in files:
+        files.remove('.git')
     return files
 
 
-def read_recipe(path):
-    return MetaData(path)
+def git_changed_recipes(git_rev, stop_rev=None, git_root=''):
+    """
+    Get the list of files changed in a git revision and return a list of
+    package directories that have been modified.
+
+    git_rev: if stop_rev is not provided, this represents the changes
+             introduced by the given git rev.  It is equivalent to
+             git_rev=SOME_REV@{1} and stop_rev=SOME_REV
+
+    stop_rev: when provided, this is the end of a range of revisions to
+             consider.  git_rev becomes the start revision.  Note that the
+             start revision is *one before* the actual start of examining
+             commits for changes.  In other words:
+
+             git_rev=SOME_REV@{1} and stop_rev=SOME_REV   => only SOME_REV
+             git_rev=SOME_REV@{2} and stop_rev=SOME_REV   => two commits, SOME_REV and the
+                                                             one before it
+    """
+    changed_files = _git_changed_files(git_rev, stop_rev=stop_rev, git_root=git_root)
+    recipe_dirs = []
+    for f in changed_files:
+        # only consider files that come from folders
+        if '/' in f:
+            try:
+                recipe_dir = f.split('/')[0]
+                find_recipe(os.path.join(git_root, recipe_dir))
+                recipe_dirs.append(recipe_dir)
+            except IOError:
+                pass
+    return recipe_dirs
 
 
 def describe_meta(meta):
@@ -71,12 +75,22 @@ def describe_meta(meta):
     d = {}
 
     d['build'] = meta.get_value('build/number', 0)
-    d['depends'] = format_deps(meta.get_value('requirements/build'))
+    d['depends'] = get_deps(meta)
     d['version'] = meta.get_value('package/version')
     return d
 
 
-def format_deps(deps):
+def get_deps(meta):
+    build_reqs = meta.get_value('requirements/build')
+    if not build_reqs:
+        build_reqs = []
+    run_reqs = meta.get_value('requirements/run')
+    if not run_reqs:
+        run_reqs = []
+    test_reqs = meta.get_value('test/requires')
+    if not test_reqs:
+        test_reqs = []
+    deps = build_reqs + run_reqs + test_reqs
     d = {}
     for x in deps:
         x = x.strip().split()
@@ -87,11 +101,7 @@ def format_deps(deps):
     return d
 
 
-def get_build_deps(recipe):
-    return format_deps(recipe.get_value('requirements/build'))
-
-
-def construct_graph(directory, filter_by_git_change=True,
+def construct_graph(directory, platform, bits, filter_by_git_change=True,
                     git_rev=None, stop_rev=None):
     '''
     Construct a directed graph of dependencies from a directory of recipes
@@ -119,13 +129,13 @@ def construct_graph(directory, filter_by_git_change=True,
     if filter_by_git_change:
         if not git_rev:
             git_rev = 'HEAD'
-        changed_dirs = git_changed_files(git_rev, stop_rev=stop_rev,
+        changed_dirs = _git_changed_files(git_rev, stop_rev=stop_rev,
                                             git_root=directory)
         print('changed git directories {}'.format(changed_dirs))
     for rd in recipe_dirs:
         recipe_dir = os.path.join(directory, rd)
         try:
-            pkg = read_recipe(recipe_dir)
+            pkg, _, _ = api.render(recipe_dir, platform=platform, bits=bits)
             name = pkg.name()
         except:
             continue
@@ -139,9 +149,7 @@ def construct_graph(directory, filter_by_git_change=True,
             _dirty = True
         g.add_node(name, meta=describe_meta(pkg), recipe=recipe_dir,
                    dirty=_dirty)
-        # TODO: build deps may be platform specific (selectors), so we need a way to specify what
-        #    platform we're targeting
-        for k, d in get_build_deps(pkg).items():
+        for k, d in get_deps(pkg).items():
             g.add_edge(name, k)
     return g
 
