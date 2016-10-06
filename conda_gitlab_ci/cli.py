@@ -4,15 +4,18 @@ import subprocess
 import sys
 from functools import partial
 
-from dask import visualize
+from dask import visualize, delayed
 import networkx as nx
 
 from .compute_build_graph import construct_graph, expand_dirty, order_build
 from .trigger_gitlab import build, expand_build_matrix, load_platforms
 
 
-def _build_noop(*args, **kw):
-    pass
+@delayed(pure=True)
+def _build_noop(deps, graph, *args, **kw):
+    for dep in deps:
+        _build_noop(graph[deps])
+    return deps
 
 
 def build_cli(parse_this=None):
@@ -88,34 +91,21 @@ def build_cli(parse_this=None):
         for node in order:
             for configuration in expand_build_matrix(node, args.path,
                                                      label=platform['worker_label']):
-                deps = g[node].keys()
-                dep_tree = {}
-                for dep in deps:
-                    if dep in g.nodes():
-                        dep_tree[dep] = g[dep]
-                    else:
-                        dep_tree[dep] = {}
                 commit_sha = args.stop_rev or args.git_rev
+                dependencies = [results[n] for n in g[node].keys()]
                 if args.visualize:
-                    function = _build_noop
+                    results[node] = _build_noop(dependencies)
                 else:
-                    function = partial(build, configuration=configuration,
+                    results[node] = build(configuration=configuration, dependencies=dependencies,
                                          commit_sha=commit_sha, **args.__dict__)
-                # this is a lazy function, and is not computed until dask persists output below.
-                results[node] = (function, dep_tree.keys())
 
-    if args._all:
-        outputs = {node: results[node] for node in g.nodes()}
-        graph = g
-    else:
-        outputs = {node: results[node] for node in order}
-        graph = subgraph
+    outputs = [results[node] for node in order]
 
     if args.visualize:
         # setattr(nx.drawing, 'graphviz_layout', nx.nx_pydot.graphviz_layout)
         # graphviz_graph = nx.draw_graphviz(graph, 'dot')
         # graphviz_graph.draw(args.visualize)
-        visualize(outputs, filename=args.visualize)  # create neat looking graph.
+        visualize(*outputs, filename=args.visualize)  # create neat looking graph.
         sys.exit(0)
 
     # Actually run things
@@ -126,7 +116,6 @@ def build_cli(parse_this=None):
     cluster = LocalCluster(n_workers=1, threads_per_worker=50, nanny=False)
     client = Client(cluster)
 
-    # import pdb; pdb.set_trace()
     futures = client.persist(outputs)
     progress(futures)
 
