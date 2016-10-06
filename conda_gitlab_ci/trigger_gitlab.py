@@ -1,19 +1,22 @@
 from itertools import izip, product
 import os
+from time import sleep
 import urlparse
+
 
 import requests
 import yaml
 from conda_build import api
+from dask import delayed
 
 
-def _get_target_labels(platforms_dir):
-    labels = []
+def load_platforms(platforms_dir):
+    platforms = []
     for f in os.listdir(platforms_dir):
-        with open(os.path.join(platforms_dir, f)) as buff:
-            platform = yaml.load(buff)
-            labels.append(platform['worker_label'])
-    return labels
+        if f.endswith('.yml'):
+            with open(os.path.join(platforms_dir, f)) as buff:
+                platforms.append(yaml.load(buff))
+    return platforms
 
 
 def _filter_environment_with_metadata(build_recipe, version_dicts):
@@ -90,26 +93,23 @@ def _get_url_from_env_vars(url_type, commit_sha=None):
     return ci_url
 
 
-def expand_build_matrix(build_recipe, repo_base_dir, repo_ref=None):
-    platforms_dir = os.path.join(repo_base_dir, 'platforms.d')
-    labels = _get_target_labels(platforms_dir)
+def expand_build_matrix(build_recipe, repo_base_dir, label):
     configurations = []
     if not os.path.isabs(build_recipe):
         build_recipe = os.path.join(repo_base_dir, build_recipe)
-    for label in labels:
-        version_sets = _get_versions_product(build_recipe,
-                                             os.path.join(repo_base_dir,
-                                                          'versions.yml'))
-        for version_set in version_sets:
-            version_set.update({
-                    "TARGET_PLATFORM": label,
-                    "BUILD_RECIPE": build_recipe,
-            })
-            configurations.append({'variables': version_set})
+    version_sets = _get_versions_product(build_recipe,
+                                            os.path.join(repo_base_dir,
+                                                        'versions.yml'))
+    for version_set in version_sets:
+        version_set.update({
+                "TARGET_PLATFORM": label,
+                "BUILD_RECIPE": build_recipe,
+        })
+        configurations.append({'variables': version_set})
     return configurations
 
 
-def submit_build(configuration, repo_ref, ci_submit_url=None, ci_submit_token=None):
+def submit_build(configuration, repo_ref, ci_submit_url=None, ci_submit_token=None, **kwargs):
     """returns job id for later checking on status"""
     if not ci_submit_url:
         ci_submit_url = _get_url_from_env_vars('trigger')
@@ -128,10 +128,12 @@ def submit_build(configuration, repo_ref, ci_submit_url=None, ci_submit_token=No
     })
 
     response = requests.post(ci_submit_url, json=configuration)
+    import pdb; pdb.set_trace()
+    assert response.code < 300, "Failed to submit job.  Error message was: %s" % response.text
     return response.json()['id']
 
 
-def check_build_status(build_id, repo_ref=None, ci_status_url=None):
+def check_build_status(build_id, commit_sha=None, ci_status_url=None, **kwargs):
     """
     Queries status of build.  Note that build_id and repo_ref are strongly tied.
        If a build_id does not exist for a given repo_ref, then you'll get an
@@ -143,8 +145,10 @@ def check_build_status(build_id, repo_ref=None, ci_status_url=None):
       - running
       - failed
     """
+    if not commit_sha:
+        commit_sha = os.getenv("CI_BUILD_REF")
     if not ci_status_url:
-        ci_status_url = _get_url_from_env_vars('status', repo_ref)
+        ci_status_url = _get_url_from_env_vars('status', commit_sha)
     # need a token to use API.  This should be set using private variables.
     private_token = os.getenv("GITLAB_PRIVATE_TOKEN")
     if not private_token:
@@ -155,3 +159,20 @@ def check_build_status(build_id, repo_ref=None, ci_status_url=None):
     response = requests.get(ci_status_url).json()
     status = [build['status'] for build in response if int(build['id']) == build_id][0]
     return status
+
+
+@delayed(pure=True)
+def build(configuration, dependencies, commit_sha=None, **kwargs):
+    # configuration is the dictionary defined in expand_build_matrix, and includes the package to build
+    build_id = submit_build(configuration, commit_sha, **kwargs)
+    while True:
+        status = check_build_status(build_id, commit_sha=commit_sha, **kwargs)
+        if status in ('pending', 'running'):
+            sleep(1)
+            continue
+        if status == 'success':
+            break
+        if status == 'failed':
+            raise Exception("Build failed", (configuration, commit_sha))
+
+    return commit_sha

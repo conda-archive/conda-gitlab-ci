@@ -1,0 +1,41 @@
+{% set version="0.1.0" %}
+
+package:
+  name: conda-gitlab-ci
+  version: {{ version }}
+
+source:
+  path: ../
+
+build:
+  script: python setup.py install --single-version-externally-managed --record=record.txt
+  entry_points:
+    - cgci = conda_gitlab_ci.cli:build_cli
+
+requirements:
+  build:
+    - python
+  run:
+    - python
+    - dask
+    - distributed
+    - requests
+    - yaml
+    - conda-build >=2.0.4
+    - networkx
+
+test:
+  requires:
+    - responses
+    - mock
+    - pytest
+  commands:
+    - py.test tests
+  source_files:
+    - tests
+
+about:
+  summary: Glue between conda-build and Gitlab CI.  Builds repos of recipes.
+  home: https://github.com/conda/conda-gitlab-ci
+  dev_url: https://github.com/conda/conda-gitlab-ci
+  doc_url: https://github.com/conda/conda-gitlab-ci

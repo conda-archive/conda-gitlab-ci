@@ -20,7 +20,7 @@ setup(
                  'conda_gitlab_ci'},
     entry_points={
         'console_scripts': [
-            'local_build=conda_gitlab_ci.build2:build_cli'
+            'cgci=conda_gitlab_ci.cli:build_cli'
         ]
     },
     include_package_data=True,
@@ -38,5 +38,4 @@ setup(
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
     ],
-    test_suite='tests',
 )
