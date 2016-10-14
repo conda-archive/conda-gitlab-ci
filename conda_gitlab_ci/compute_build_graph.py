@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 from __future__ import print_function, division
 
-import argparse
 import os
 import subprocess
 
 import networkx as nx
-from conda_build import api
+from conda_build import api, conda_interface
 from conda_build.metadata import find_recipe
 
 
@@ -74,22 +73,13 @@ def describe_meta(meta):
     d = {}
 
     d['build'] = meta.get_value('build/number', 0)
-    d['depends'] = get_deps(meta)
+    d['build_depends'] = get_build_deps(meta)
+    d['run_test_depends'] = get_run_test_deps(meta)
     d['version'] = meta.get_value('package/version')
     return d
 
 
-def get_deps(meta):
-    build_reqs = meta.get_value('requirements/build')
-    if not build_reqs:
-        build_reqs = []
-    run_reqs = meta.get_value('requirements/run')
-    if not run_reqs:
-        run_reqs = []
-    test_reqs = meta.get_value('test/requires')
-    if not test_reqs:
-        test_reqs = []
-    deps = build_reqs + run_reqs + test_reqs
+def _deps_to_version_dict(deps):
     d = {}
     for x in deps:
         x = x.strip().split()
@@ -98,6 +88,23 @@ def get_deps(meta):
         else:
             d[x[0]] = ''
     return d
+
+
+def get_build_deps(meta):
+    build_reqs = meta.get_value('requirements/build')
+    if not build_reqs:
+        build_reqs = []
+    return _deps_to_version_dict(build_reqs)
+
+
+def get_run_test_deps(meta):
+    run_reqs = meta.get_value('requirements/run')
+    if not run_reqs:
+        run_reqs = []
+    test_reqs = meta.get_value('test/requires')
+    if not test_reqs:
+        test_reqs = []
+    return _deps_to_version_dict(run_reqs + test_reqs)
 
 
 def construct_graph(directory, platform, bits, folders=(), git_rev=None, stop_rev=None):
@@ -128,8 +135,9 @@ def construct_graph(directory, platform, bits, folders=(), git_rev=None, stop_re
         git_rev = 'HEAD'
     if not folders:
         folders = _git_changed_files(git_rev, stop_rev=stop_rev,
-                                        git_root=directory)
+                                     git_root=directory)
         print('changed git directories {}'.format(folders))
+
     for rd in recipe_dirs:
         recipe_dir = os.path.join(directory, rd)
         try:
@@ -142,36 +150,84 @@ def construct_graph(directory, platform, bits, folders=(), git_rev=None, stop_re
         _dirty = False
         if rd in folders:
             _dirty = True
-        g.add_node(name, meta=describe_meta(pkg), recipe=recipe_dir,
-                   dirty=_dirty)
-        for k, d in get_deps(pkg).items():
+        # since we have no dependency ordering without a graph, it is conceivable that we add
+        #    recipe information after we've already added package info as just a dependency.
+        #    This first clause is if we encounter a recipe for the first time.  Its else clause
+        #    is when we encounter a recipe after we've already added a node based on a dependency
+        #    that can (presumably) be downloaded.
+        if name not in g.nodes():
+            g.add_node(name, meta=describe_meta(pkg), recipe=recipe_dir,
+                       dirty=_dirty)
+        else:
+            g.node[name]['meta'] = describe_meta(pkg)
+            g.node[name]['recipe'] = recipe_dir
+            g.node[name]['dirty'] = _dirty
+        for k, d in get_build_deps(pkg).items():
+            if k not in g.nodes():
+                g.add_node(k, dirty=False)
             g.add_edge(name, k)
     return g
 
 
-def expand_dirty(graph, steps=0, changed=None):
+def _installable(package, version, conda_resolve):
+    """Can Conda install the package we need?"""
+    return conda_resolve.valid(conda_interface.MatchSpec(" ".join([package, version])),
+                               filter=conda_resolve.default_filter())
+
+
+def _buildable(package, version):
+    """Does the recipe that we have available produce the package we need?"""
+    available = False
+    if os.path.isdir(package):
+        metadata = api.render(package)
+        match_dict = {'name': metadata.name,
+                      'version': metadata.version,
+                      'build': metadata.build_number, }
+        ms = conda_interface.MatchSpec(" ".join([package, version]))
+        available = ms.match(match_dict)
+    return available
+
+
+def upstream_dependencies_needing_build(graph, dirty_nodes, conda_resolve):
+    for node in dirty_nodes:
+        for successor in graph.successors(node):
+            if not _installable(successor, graph.node[successor]['version'], conda_resolve):
+                if _buildable(successor, graph.node[successor]['version']):
+                    graph.node[successor]['dirty'] = True
+                    dirty_nodes.append(successor)
+                else:
+                    raise ValueError("Dependency {0} is not installable, and recipe (if available)"
+                                     " can't produce desired version.")
+    return dirty_nodes
+
+
+def expand_dirty(graph, conda_resolve, steps=0, changed=None):
+    """Apply the dirty label to any nodes that need rebuilding.  "need rebuilding" means
+    both packages that our target package depends on, but are not yet built, as well as
+    packages that depend on our target package.  For the latter, you can specify how many
+    dependencies deep (steps) to follow that chain, since it can be quite large.
+    """
     # starting from our initial collection of dirty nodes, trace the tree down to packages
     #   that depend on the dirty nodes.  These packages may need to be rebuilt, or perhaps
     #   just tested.
-    changed = changed or set()
+
+    dirty_nodes = [node for node, value in graph.node.items() if value.get('dirty')]
+    dirty_nodes = upstream_dependencies_needing_build(graph, dirty_nodes, conda_resolve)
+
     for step in range(steps):
-        for node, value in graph.node.items():
-            if value.get('dirty'):
-                changed.add(node)
-                for successor in graph.predecessors(node):
-                    changed.add(successor)
-                    graph.node[successor]['dirty'] = True
-    return changed
+        for node in dirty_nodes:
+            for predecessor in graph.predecessors(node):
+                graph.node[predecessor]['dirty'] = True
+                dirty_nodes.append(predecessor)
+    return set(dirty_nodes)
 
 
 def dirty(graph):
     """
     Return a set of all dirty nodes in the graph.
-
-    These include implicit and explicit dirty nodes.
     """
     # Reverse the edges to get true dependency
-    return {n for n, v in graph.node.items() if v.get('dirty', False)}
+    return {n: v for n, v in graph.node.items() if v.get('dirty', False)}
 
 
 def order_build(graph, packages=None, level=0, filter_dirty=True):
@@ -198,4 +254,10 @@ def order_build(graph, packages=None, level=0, filter_dirty=True):
     for n in tmp_global.nodes_iter():
         tmp_global.node[n] = graph.node[n]
 
-    return tmp_global, nx.topological_sort(tmp_global, reverse=True)
+    try:
+        order = nx.topological_sort(tmp_global, reverse=True)
+    except nx.exception.NetworkXUnfeasible:
+        raise ValueError("Cycles detected in graph: {0}".format(nx.find_cycle(tmp_global,
+                                                                       orientation='ignore')))
+
+    return tmp_global, order

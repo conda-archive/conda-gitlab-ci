@@ -1,6 +1,8 @@
 import os
 import subprocess
 
+from conda_build.conda_interface import Resolve
+import networkx as nx
 import pytest
 
 
@@ -54,3 +56,71 @@ def testing_git_repo(testing_workdir, request):
     subprocess.check_call(['git', 'add', 'test_dir_2'])
     subprocess.check_call(['git', 'commit', '-m', 'commit 3'])
     return request
+
+
+@pytest.fixture(scope='function')
+def testing_graph(request):
+    g = nx.DiGraph()
+    for x in ['a', 'b', 'c', 'd']:
+        g.add_node(x, version="1.0", build="0")
+    g.add_edge('a', 'b')
+    g.add_edge('b', 'c')
+    g.add_edge('c', 'd')
+    g.node['b']['dirty'] = True
+    g.node['b']['meta'] = 'something'
+    return g
+
+
+@pytest.fixture(scope='function')
+def testing_conda_resolve(request):
+    index = {
+        "a": {
+            "build": "0",
+            "build_number": 0,
+            "date": "2015-10-28",
+            "depends": [],
+            "license": "LGPL",
+            "md5": "7268f7dcc075e615af758d1243ed4f1d",
+            "name": "a",
+            "requires": [],
+            "size": 303694,
+            "version": "920"
+        },
+        "b": {
+            "build": "0",
+            "build_number": 0,
+            "date": "2015-10-28",
+            "depends": [],
+            "license": "LGPL",
+            "md5": "7268f7dcc075e615af758d1243ed4f1d",
+            "name": "b",
+            "requires": [],
+            "size": 303694,
+            "version": "920"
+        },
+        "c": {
+            "build": "0",
+            "build_number": 0,
+            "date": "2015-10-28",
+            "depends": [],
+            "license": "LGPL",
+            "md5": "7268f7dcc075e615af758d1243ed4f1d",
+            "name": "c",
+            "requires": [],
+            "size": 303694,
+            "version": "920"
+        },
+        "d": {
+            "build": "0",
+            "build_number": 0,
+            "date": "2015-10-28",
+            "depends": [],
+            "license": "LGPL",
+            "md5": "7268f7dcc075e615af758d1243ed4f1d",
+            "name": "d",
+            "requires": [],
+            "size": 303694,
+            "version": "920"
+        }
+    }
+    return Resolve(index)

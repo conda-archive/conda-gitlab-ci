@@ -36,27 +36,3 @@ def test_submit_build(set_ci_environ_vars):
                   )
     vars = {"variables": {"BUILD_RECIPE": "frank"}}
     assert trigger_gitlab.submit_build(vars, '123abc') == 1
-
-
-def test_expand_build_matrix():
-    # python version specified; ignores matrix for python
-    # (win + mac + linux) = 3
-    configurations = trigger_gitlab.expand_build_matrix('python_version_specified',
-                                                        repo_base_dir=test_data_dir)
-    assert len(configurations) == 3
-
-    # python version not specified; uses matrix for python
-    # (python 2 + python 3) * (win + mac + linux) = 6
-    configurations = trigger_gitlab.expand_build_matrix('python_test',
-                                                        repo_base_dir=test_data_dir)
-    assert len(configurations) == 6
-
-    # (python 2 + python 3) * (win + mac + linux) = 6
-    configurations = trigger_gitlab.expand_build_matrix('python_numpy_no_xx',
-                                                        repo_base_dir=test_data_dir)
-    assert len(configurations) == 6
-
-    # (python 2 + python 3) * (numpy 1.10 + 1.11) * (win + mac + linux) = 12
-    configurations = trigger_gitlab.expand_build_matrix('python_numpy_xx',
-                                                        repo_base_dir=test_data_dir)
-    assert len(configurations) == 12
