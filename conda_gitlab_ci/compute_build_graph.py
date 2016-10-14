@@ -175,22 +175,23 @@ def _installable(package, version, conda_resolve):
                                filter=conda_resolve.default_filter())
 
 
-def _buildable(package, version):
+def _buildable(package, version=""):
     """Does the recipe that we have available produce the package we need?"""
     available = False
     if os.path.isdir(package):
-        metadata = api.render(package)
-        match_dict = {'name': metadata.name,
-                      'version': metadata.version,
-                      'build': metadata.build_number, }
+        metadata, _, _ = api.render(package)
+        match_dict = {'name': metadata.name(),
+                      'version': metadata.version(),
+                      'build': metadata.build_number(), }
         ms = conda_interface.MatchSpec(" ".join([package, version]))
         available = ms.match(match_dict)
     return available
 
 
-def upstream_dependencies_needing_build(graph, dirty_nodes, conda_resolve):
+def upstream_dependencies_needing_build(graph, conda_resolve):
+    dirty_nodes = [node for node, value in graph.node.items() if value.get('dirty')]
     for node in dirty_nodes:
-        for successor in graph.successors(node):
+        for successor in graph.successors_iter(node):
             if not _installable(successor, graph.node[successor]['version'], conda_resolve):
                 if _buildable(successor, graph.node[successor]['version']):
                     graph.node[successor]['dirty'] = True
@@ -198,7 +199,7 @@ def upstream_dependencies_needing_build(graph, dirty_nodes, conda_resolve):
                 else:
                     raise ValueError("Dependency {0} is not installable, and recipe (if available)"
                                      " can't produce desired version.")
-    return dirty_nodes
+    return set(dirty_nodes)
 
 
 def expand_dirty(graph, conda_resolve, steps=0, changed=None):
@@ -211,15 +212,14 @@ def expand_dirty(graph, conda_resolve, steps=0, changed=None):
     #   that depend on the dirty nodes.  These packages may need to be rebuilt, or perhaps
     #   just tested.
 
-    dirty_nodes = [node for node, value in graph.node.items() if value.get('dirty')]
-    dirty_nodes = upstream_dependencies_needing_build(graph, dirty_nodes, conda_resolve)
+    dirty_nodes = upstream_dependencies_needing_build(graph, conda_resolve)
 
     for step in range(steps):
         for node in dirty_nodes:
             for predecessor in graph.predecessors(node):
                 graph.node[predecessor]['dirty'] = True
-                dirty_nodes.append(predecessor)
-    return set(dirty_nodes)
+                dirty_nodes.add(predecessor)
+    return dirty_nodes
 
 
 def dirty(graph):

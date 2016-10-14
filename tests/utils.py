@@ -1,7 +1,9 @@
+from collections import defaultdict
 import os
 import subprocess
 
 from conda_build.conda_interface import Resolve
+from conda_build.metadata import MetaData
 import networkx as nx
 import pytest
 
@@ -55,6 +57,11 @@ def testing_git_repo(testing_workdir, request):
         f.write('weee')
     subprocess.check_call(['git', 'add', 'test_dir_2'])
     subprocess.check_call(['git', 'commit', '-m', 'commit 3'])
+    os.makedirs('test_dir_3')
+    with open(os.path.join('test_dir_3', 'meta.yaml'), 'w') as f:
+        f.write('weee')
+    subprocess.check_call(['git', 'add', 'test_dir_3'])
+    subprocess.check_call(['git', 'commit', '-m', 'commit 4'])
     return request
 
 
@@ -63,9 +70,10 @@ def testing_graph(request):
     g = nx.DiGraph()
     for x in ['a', 'b', 'c', 'd']:
         g.add_node(x, version="1.0", build="0")
-    g.add_edge('a', 'b')
-    g.add_edge('b', 'c')
-    g.add_edge('c', 'd')
+    # d depends on c depends on b depends on a
+    g.add_edge('b', 'a')
+    g.add_edge('c', 'b')
+    g.add_edge('d', 'c')
     g.node['b']['dirty'] = True
     g.node['b']['meta'] = 'something'
     return g
@@ -124,3 +132,23 @@ def testing_conda_resolve(request):
         }
     }
     return Resolve(index)
+
+
+@pytest.fixture(scope='function')
+def testing_metadata(request):
+    d = defaultdict(dict)
+    d['package']['name'] = request.function.__name__
+    d['package']['version'] = '1.0'
+    d['build']['number'] = '1'
+    d['build']['entry_points'] = []
+    # MetaData does the auto stuff if the build string is None
+    d['build']['string'] = None
+    d['requirements']['build'] = ['build_requirement']
+    d['requirements']['run'] = ['run_requirement  1.0']
+    d['test']['requires'] = ['test_requirement']
+    d['test']['commands'] = ['echo "A-OK"', 'exit 0']
+    d['about']['home'] = "sweet home"
+    d['about']['license'] = "contract in blood"
+    d['about']['summary'] = "a test package"
+
+    return MetaData.fromdict(d)
