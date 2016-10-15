@@ -18,7 +18,7 @@ install:
   - conda config --set always_yes yes
   - conda config --set auto_update_conda False
   - conda update -q --all
-  - conda install -q requests python=$TRAVIS_PYTHON_VERSION pyflakes=1.1 flake8 mock
+  - conda install -q requests python=$TRAVIS_PYTHON_VERSION pyflakes=1.1 flake8 mock six
   - conda install -q conda-build dask distributed pytest-cov responses networkx graphviz
   - $HOME/miniconda/bin/pip install pytest-mock graphviz
   - pip install --no-deps .

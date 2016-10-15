@@ -1,9 +1,10 @@
 from __future__ import print_function, division
 import contextlib
-from itertools import izip, product
+from itertools import product
 import os
 
 from conda_build.api import render
+import six
 import yaml
 
 
@@ -54,11 +55,11 @@ def _filter_environment_with_metadata(build_recipe, version_dicts):
     with set_conda_env_vars(version_dicts):
         metadata, _, _ = render(build_recipe)
 
-    for name in ('numpy', 'python', 'perl', 'lua', 'r-base'):
+    for name in (u'numpy', u'python', u'perl', u'lua', u'r-base'):
         for req in metadata.get_value('requirements/run'):
-            if hasattr(req, 'encode'):
-                req = req.encode('utf-8')
-            req_parts = req.split(' ')
+            if hasattr(req, 'decode'):
+                req = req.decode('utf-8')
+            req_parts = req.split(u' ')
             if req_parts[0] == name:
                 # logic here: if a version is provided, then ignore the build matrix - except
                 #   numpy.  If numpy has x.x, that is the only way that it is considered part
@@ -89,7 +90,7 @@ def _get_versions_product(build_recipe, versions_file):
     if os.path.isdir(build_recipe):
         dicts = _filter_environment_with_metadata(build_recipe, dicts)
     # http://stackoverflow.com/a/5228294/1170370
-    return (dict(izip(dicts, x)) for x in product(*dicts.itervalues()))
+    return (dict(six.moves.zip(dicts, x)) for x in product(*dicts.values()))
 
 
 def expand_build_matrix(build_recipe, repo_base_dir, label):

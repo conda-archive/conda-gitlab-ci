@@ -16,13 +16,14 @@ requirements:
   build:
     - python
   run:
-    - python
+    - conda-build >=2.0.4
     - dask
     - distributed
-    - requests
-    - yaml
-    - conda-build >=2.0.4
     - networkx
+    - python
+    - requests
+    - six
+    - yaml
 
 # test:
 #   requires:

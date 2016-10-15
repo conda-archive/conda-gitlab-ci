@@ -1,4 +1,5 @@
 import os
+import sys
 
 from conda_gitlab_ci import cli
 

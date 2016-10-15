@@ -1,6 +1,6 @@
 from __future__ import print_function, division
 import os
-import urlparse
+import six
 
 import requests
 
@@ -13,7 +13,7 @@ def _get_url_from_env_vars(url_type, commit_sha=None):
     if not base_url:
         raise ValueError("Did not get value for CI_PROJECT_URL.  Please set this"
                          "variable and try again.")
-    url = urlparse.urlsplit(base_url)
+    url = six.moves.urllib.parse.urlsplit(base_url)
     project_id = os.getenv("CI_PROJECT_ID")
     if not commit_sha:
         commit_sha = os.getenv("CI_BUILD_REF")
@@ -26,7 +26,7 @@ def _get_url_from_env_vars(url_type, commit_sha=None):
                             "You must provide ci_submit_url arg if not "
                             "running under a gitlab ci build.")
     location = ci_urls[url_type].format(id=project_id, sha=commit_sha)
-    ci_url = urlparse.urlunsplit((url.scheme, url.hostname, location,
+    ci_url = six.moves.urllib.parse.urlunsplit((url.scheme, url.hostname, location,
                                   "", ""))
     return ci_url
 
@@ -78,7 +78,7 @@ def check_build_status(build_id, commit_sha=None, ci_status_url=None, **kwargs):
         raise ValueError("Did not get value for GITLAB_PRIVATE_TOKEN.  "
                         "You must set the GITLAB_PRIVATE_TOKEN secret environment "
                         "variable for your project.")
-    ci_status_url = urlparse.urljoin(ci_status_url, '?private_token=' + private_token)
+    ci_status_url = six.moves.urllib.parse.urljoin(ci_status_url, '?private_token=' + private_token)
     response = requests.get(ci_status_url).json()
     status = [build['status'] for build in response if int(build['id']) == build_id][0]
     return status
