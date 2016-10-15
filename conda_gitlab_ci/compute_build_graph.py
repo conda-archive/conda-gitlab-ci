@@ -107,21 +107,23 @@ def get_run_test_deps(meta):
     return _deps_to_version_dict(run_reqs + test_reqs)
 
 
-def construct_graph(directory, platform, bits, folders=(), git_rev=None, stop_rev=None):
+def construct_graph(directory, platform, bits, folders=(), deps_type='build',
+                    git_rev=None, stop_rev=None):
     '''
     Construct a directed graph of dependencies from a directory of recipes
 
-    Annotate dependencies that don't have recipes in that directory
+    deps_type: whether to use build or run/test requirements for the graph.  Avoids cycles.
+          values: 'build' or 'run_test'.  Actually, only 'build' matters - otherwise, it's
+                   run/test for any other value.
     '''
-    print('construct_graph with args: ', directory)
     g = nx.DiGraph()
-    directory = os.path.abspath(directory)
+    if not os.path.isabs(directory):
+        directory = os.path.normpath(os.path.join(os.getcwd(), directory))
     assert os.path.isdir(directory)
 
     # get all immediate subdirectories
     other_top_dirs = [d for d in os.listdir(directory)
                       if os.path.isdir(os.path.join(directory, d)) and
-                      not os.path.exists(os.path.join(directory, d, 'meta.yaml')) and
                       not d.startswith('.')]
     recipe_dirs = []
     for recipe_dir in other_top_dirs:
@@ -131,20 +133,16 @@ def construct_graph(directory, platform, bits, folders=(), git_rev=None, stop_re
         except IOError:
             pass
 
-    if not git_rev:
-        git_rev = 'HEAD'
     if not folders:
-        folders = _git_changed_files(git_rev, stop_rev=stop_rev,
-                                     git_root=directory)
-        print('changed git directories {}'.format(folders))
+        if not git_rev:
+            git_rev = 'HEAD'
+        folders = git_changed_recipes(git_rev, stop_rev=stop_rev,
+                                      git_root=directory)
 
     for rd in recipe_dirs:
         recipe_dir = os.path.join(directory, rd)
-        try:
-            pkg, _, _ = api.render(recipe_dir, platform=platform, bits=bits)
-            name = pkg.name()
-        except:
-            continue
+        pkg, _, _ = api.render(recipe_dir, platform=platform, bits=bits)
+        name = pkg.name()
 
         # add package (in case it has no build deps)
         _dirty = False
@@ -162,8 +160,10 @@ def construct_graph(directory, platform, bits, folders=(), git_rev=None, stop_re
             g.node[name]['meta'] = describe_meta(pkg)
             g.node[name]['recipe'] = recipe_dir
             g.node[name]['dirty'] = _dirty
-        for k, d in get_build_deps(pkg).items():
+        deps = get_build_deps(pkg) if deps_type == 'build' else get_run_test_deps(pkg)
+        for k, d in deps.items():
             if k not in g.nodes():
+                # we fill in the rest of the metadata in the
                 g.add_node(k, dirty=False)
             g.add_edge(name, k)
     return g
@@ -215,7 +215,7 @@ def expand_dirty(graph, conda_resolve, steps=0, changed=None):
     dirty_nodes = upstream_dependencies_needing_build(graph, conda_resolve)
 
     for step in range(steps):
-        for node in dirty_nodes:
+        for node in dirty_nodes.copy():
             for predecessor in graph.predecessors(node):
                 graph.node[predecessor]['dirty'] = True
                 dirty_nodes.add(predecessor)
@@ -244,11 +244,11 @@ def order_build(graph, packages=None, level=0, filter_dirty=True):
        non-empty sequence: build nodes in sequence
     '''
 
-    if packages is None and not filter_dirty:
-        tmp_global = graph.subgraph(graph.nodes())
-    else:
-        packages = dirty(graph)
-        tmp_global = graph.subgraph(packages)
+    if not packages:
+        packages = graph.nodes()
+        if filter_dirty:
+            packages = dirty(graph)
+    tmp_global = graph.subgraph(packages)
 
     # copy relevant node data to tmp_global
     for n in tmp_global.nodes_iter():
