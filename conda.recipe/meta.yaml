@@ -24,15 +24,16 @@ requirements:
     - conda-build >=2.0.4
     - networkx
 
-test:
-  requires:
-    - responses
-    - mock
-    - pytest
-  commands:
-    - py.test tests
-  source_files:
-    - tests
+# test:
+#   requires:
+#     - responses
+#     - mock
+#     - pytest
+#   commands:
+#     - pip install pytest-mock
+#     - py.test tests
+#   source_files:
+#     - tests
 
 about:
   summary: Glue between conda-build and Gitlab CI.  Builds repos of recipes.
