@@ -33,7 +33,7 @@ def test_expand_build_matrix():
 
 
 def test_load_platforms():
-    platforms = bm.load_platforms(os.path.join(test_data_dir, 'platforms.d'))
+    platforms = bm.load_platforms(os.path.join(test_data_dir, 'build_platforms.d'))
     assert len(platforms) == 3
     assert 'worker_label' in platforms[0]
     assert 'platform' in platforms[0]

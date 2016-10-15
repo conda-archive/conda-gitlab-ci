@@ -1,14 +1,12 @@
 import os
 
-import networkx as nx
 import pytest
 from pytest_mock import mocker
 
 import conda_gitlab_ci.compute_build_graph
 from .utils import (testing_workdir, testing_git_repo, testing_graph, testing_conda_resolve,
-                    testing_metadata, make_recipe)
+                    testing_metadata, make_recipe, test_data_dir)
 
-test_data_dir = os.path.join(os.path.dirname(__file__), 'data')
 graph_data_dir = os.path.join(test_data_dir, 'graph_data')
 
 

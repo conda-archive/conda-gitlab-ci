@@ -1,11 +1,7 @@
-import os
 import responses
 
 from conda_gitlab_ci import trigger_gitlab
 import pytest
-from pytest_mock import mocker
-
-test_data_dir = os.path.join(os.path.dirname(__file__), 'data')
 
 
 @pytest.fixture

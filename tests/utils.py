@@ -7,6 +7,8 @@ from conda_build.metadata import MetaData
 import networkx as nx
 import pytest
 
+test_data_dir = os.path.join(os.path.dirname(__file__), 'data')
+
 
 @pytest.fixture(scope='function')
 def testing_workdir(tmpdir, request):

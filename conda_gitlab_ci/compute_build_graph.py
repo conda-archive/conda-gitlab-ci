@@ -201,7 +201,7 @@ def upstream_dependencies_needing_build(graph, conda_resolve):
     return set(dirty_nodes)
 
 
-def expand_dirty(graph, conda_resolve, steps=0, changed=None):
+def expand_dirty(graph, conda_resolve, steps=0):
     """Apply the dirty label to any nodes that need rebuilding.  "need rebuilding" means
     both packages that our target package depends on, but are not yet built, as well as
     packages that depend on our target package.  For the latter, you can specify how many

@@ -3,8 +3,7 @@ import contextlib
 from itertools import izip, product
 import os
 
-import conda_build.conda_interface
-import conda_build.api
+from conda_build.api import render
 import yaml
 
 
@@ -53,7 +52,7 @@ def _filter_environment_with_metadata(build_recipe, version_dicts):
         return version_dicts
 
     with set_conda_env_vars(version_dicts):
-        metadata, _, _ = conda_build.api.render(build_recipe)
+        metadata, _, _ = render(build_recipe)
 
     for name in ('numpy', 'python', 'perl', 'lua', 'r-base'):
         for req in metadata.get_value('requirements/run'):
