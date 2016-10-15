@@ -3,8 +3,11 @@ Conda Gitlab CI
 ===============================
 
 
-.. image:: https://img.shields.io/travis/msarahan/conda_gitlab_ci.svg
-        :target: https://travis-ci.org/msarahan/conda_gitlab_ci
+.. image:: https://img.shields.io/travis/conda/conda-gitlab-ci.svg
+           :target: https://travis-ci.org/conda/conda-gitlab-ci
+
+.. image:: https://codecov.io/gh/conda/conda-gitlab-ci/branch/master/graph/badge.svg
+           :target: https://codecov.io/gh/conda/conda-gitlab-ci
 
 Drive Gitlab CI for conda recipe repos
 
