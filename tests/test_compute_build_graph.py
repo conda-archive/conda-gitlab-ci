@@ -6,7 +6,7 @@ from pytest_mock import mocker
 
 import conda_gitlab_ci.compute_build_graph
 from .utils import (testing_workdir, testing_git_repo, testing_graph, testing_conda_resolve,
-                    testing_metadata)
+                    testing_metadata, make_recipe)
 
 test_data_dir = os.path.join(os.path.dirname(__file__), 'data')
 graph_data_dir = os.path.join(test_data_dir, 'graph_data')
@@ -48,6 +48,14 @@ def test_construct_graph_git_rev(testing_git_repo):
     assert set(g.nodes()) == set(['test_dir_3', 'test_dir_2', 'test_dir_1'])
     assert all([g.node[dirname]['dirty'] for dirname in ('test_dir_2',
                                                          'test_dir_3')])
+    assert set(g.edges()) == set([('test_dir_2', 'test_dir_1'),
+                                  ('test_dir_3', 'test_dir_2')])
+
+def test_construct_graph_relative_path(testing_git_repo):
+    g = conda_gitlab_ci.compute_build_graph.construct_graph('.', 'some_os', 'somearch')
+    assert set(g.nodes()) == set(['test_dir_3', 'test_dir_2', 'test_dir_1'])
+    assert g.node['test_dir_3']['dirty']
+    assert not any([g.node[dirname]['dirty'] for dirname in ('test_dir_1', 'test_dir_2')])
     assert set(g.edges()) == set([('test_dir_2', 'test_dir_1'),
                                   ('test_dir_3', 'test_dir_2')])
 
@@ -170,3 +178,15 @@ def test_order_build_no_filter(testing_graph):
 def test_order_build(testing_graph):
     g, order = conda_gitlab_ci.compute_build_graph.order_build(testing_graph)
     assert order == ['b']
+
+
+def test_get_base_folders(testing_workdir):
+    make_recipe('some_recipe')
+    os.makedirs('not_a_recipe')
+    with open(os.path.join('not_a_recipe', 'testfile'), 'w') as f:
+        f.write('weee')
+
+    changed_files = ['some_recipe/meta.yaml', 'not_a_recipe/testfile']
+    assert (conda_gitlab_ci.compute_build_graph._get_base_folders(testing_workdir, changed_files) ==
+            ['some_recipe'])
+    assert not conda_gitlab_ci.compute_build_graph._get_base_folders(testing_workdir, changed_files[1:])

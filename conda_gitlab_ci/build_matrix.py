@@ -19,9 +19,8 @@ def load_platforms(platforms_dir):
 
 @contextlib.contextmanager
 def set_conda_env_vars(env_dict):
-    backup_dict = {}
+    backup_dict = os.environ.copy()
     for env_var, value in env_dict.items():
-        backup_dict[env_var] = os.environ.get(env_var)
         if isinstance(value, list):
             value = value[0]
         if not value:
@@ -29,6 +28,11 @@ def set_conda_env_vars(env_dict):
         os.environ[env_var] = value
 
     yield
+
+    # ensure that cruft isn't left
+    for key in env_dict:
+        if key not in backup_dict:
+            backup_dict[key] = None
 
     for env_var, value in backup_dict.items():
         if not value:
@@ -67,8 +71,9 @@ def _filter_environment_with_metadata(build_recipe, version_dicts):
                         break
                     # we have a version specified for something other than numpy.  This means
                     #    we are overriding our build matrix.  Do not consider this variable.
-                    else:
-                        continue
+                    #    Ignore coverage because Python optimizes the continue out, and it is never
+                    #    covered.
+                    continue   # pragma: no cover
                 # fall through for numpy when it does not have any associated x.x
                 if name == 'numpy':
                     continue

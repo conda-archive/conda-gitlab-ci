@@ -36,27 +36,28 @@ def testing_workdir(tmpdir, request):
     return str(tmpdir)
 
 
+def make_recipe(name, dependencies=()):
+    os.makedirs(name)
+    with open(os.path.join(name, 'meta.yaml'), 'w') as f:
+        # not valid meta.yaml.  Doesn't matter for test.
+        f.write('package:\n')
+        f.write('   name: {0}\n'.format(name))
+        f.write('   version: 1.0\n')
+        if dependencies:
+            f.write('requirements:\n')
+            f.write('    build:\n')
+            for dep in dependencies:
+                f.write('        - {0}\n'.format(dep))
+
+
 @pytest.fixture(scope='function')
 def testing_git_repo(testing_workdir, request):
-    def make_recipe(name, dependencies=()):
-        os.makedirs(name)
-        with open(os.path.join(name, 'meta.yaml'), 'w') as f:
-            # not valid meta.yaml.  Doesn't matter for test.
-            f.write('package:\n')
-            f.write('   name: {0}\n'.format(name))
-            f.write('   version: 1.0\n')
-            if dependencies:
-                f.write('requirements:\n')
-                f.write('    build:\n')
-                for dep in dependencies:
-                    f.write('        - {0}\n'.format(dep))
     subprocess.check_call(['git', 'init'])
     with open('sample_file', 'w') as f:
         f.write('weee')
     subprocess.check_call(['git', 'add', 'sample_file'])
     subprocess.check_call(['git', 'commit', '-m', 'commit 1'])
     os.makedirs('not_a_recipe')
-
     with open(os.path.join('not_a_recipe', 'testfile'), 'w') as f:
         f.write('weee')
     make_recipe('test_dir_1')

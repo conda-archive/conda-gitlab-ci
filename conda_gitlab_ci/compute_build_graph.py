@@ -17,17 +17,25 @@ def _git_changed_files(git_rev, stop_rev=None, git_root=''):
         git_root = os.getcwd()
     if stop_rev:
         git_rev = "{0}..{1}".format(git_rev, stop_rev)
-    proc = subprocess.Popen(['git', 'diff-tree', '--no-commit-id',
-                             '--name-only', '-r', git_rev
-                             ],
-                            cwd=git_root,
-                            stdout=subprocess.PIPE)
-    if proc.wait():
-        raise ValueError('Bad git return code: {}'.format(proc.poll()))
-    files = proc.stdout.read().decode().splitlines()
-    if '.git' in files:
-        files.remove('.git')
+    output = subprocess.check_output(['git', 'diff-tree', '--no-commit-id',
+                                      '--name-only', '-r', git_rev],
+                                     cwd=git_root)
+    files = output.decode().splitlines()
     return files
+
+
+def _get_base_folders(base_dir, changed_files):
+    recipe_dirs = []
+    for f in changed_files:
+        # only consider files that come from folders
+        if '/' in f:
+            try:
+                recipe_dir = f.split('/')[0]
+                find_recipe(os.path.join(base_dir, recipe_dir))
+                recipe_dirs.append(recipe_dir)
+            except IOError:
+                pass
+    return recipe_dirs
 
 
 def git_changed_recipes(git_rev, stop_rev=None, git_root=''):
@@ -49,16 +57,7 @@ def git_changed_recipes(git_rev, stop_rev=None, git_root=''):
                                                              one before it
     """
     changed_files = _git_changed_files(git_rev, stop_rev=stop_rev, git_root=git_root)
-    recipe_dirs = []
-    for f in changed_files:
-        # only consider files that come from folders
-        if '/' in f:
-            try:
-                recipe_dir = f.split('/')[0]
-                find_recipe(os.path.join(git_root, recipe_dir))
-                recipe_dirs.append(recipe_dir)
-            except IOError:
-                pass
+    recipe_dirs = _get_base_folders(git_root, changed_files)
     return recipe_dirs
 
 
