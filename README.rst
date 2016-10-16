@@ -8,6 +8,10 @@ Conda Gitlab CI
 
 .. image:: https://codecov.io/gh/conda/conda-gitlab-ci/branch/master/graph/badge.svg
            :target: https://codecov.io/gh/conda/conda-gitlab-ci
+           
+.. image:: https://landscape.io/github/conda/conda-gitlab-ci/master/landscape.svg?style=flat
+   :target: https://landscape.io/github/conda/conda-gitlab-ci/master
+   :alt: Code Health
 
 Drive Gitlab CI for conda recipe repos
 
