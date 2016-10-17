@@ -27,7 +27,7 @@ def parse_args(parse_this=None):
                         default=5,
                         type=int,
                         help=("Limit the total number of downstream packages built.  Only applies "
-                              "if steps != 0"))
+                              "if steps != 0.  Set to -1 for unlimited."))
     parser.add_argument('--git-rev',
                         default='HEAD',
                         help=('start revision to examine.  If stop not '
