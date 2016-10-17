@@ -153,8 +153,8 @@ def construct_graph(directory, platform, bits, folders=(), deps_type='build',
             # since we have no dependency ordering without a graph, it is conceivable that we add
             #    recipe information after we've already added package info as just a dependency.
             #    This first clause is if we encounter a recipe for the first time.  Its else clause
-            #    is when we encounter a recipe after we've already added a node based on a dependency
-            #    that can (presumably) be downloaded.
+            #    is when we encounter a recipe after we've already added a node based on a
+            #    dependency that can (presumably) be downloaded.
             if name not in g.nodes():
                 g.add_node(name, meta=describe_meta(pkg), recipe=recipe_dir,
                         **run_dict)
