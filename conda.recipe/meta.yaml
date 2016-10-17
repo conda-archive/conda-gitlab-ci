@@ -25,16 +25,18 @@ requirements:
     - six
     - yaml
 
-# test:
-#   requires:
-#     - responses
-#     - mock
-#     - pytest
-#   commands:
-#     - pip install pytest-mock
-#     - py.test tests
-#   source_files:
-#     - tests
+test:
+  requires:
+    - responses
+    - mock
+    - pytest
+    - pytest-cov
+    - graphviz
+  commands:
+    - pip install pytest-mock graphviz
+    - py.test tests --cov conda_gitlab_ci
+  source_files:
+    - tests
 
 about:
   summary: Glue between conda-build and Gitlab CI.  Builds repos of recipes.

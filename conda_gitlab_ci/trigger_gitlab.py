@@ -31,7 +31,7 @@ def _get_url_from_env_vars(url_type, commit_sha=None):
     return ci_url
 
 
-def submit_build(configuration, repo_ref, ci_submit_url=None, ci_submit_token=None, **kwargs):
+def submit_job(configuration, repo_ref, ci_submit_url=None, ci_submit_token=None, **kwargs):
     """returns job id for later checking on status"""
     if 'BUILD_RECIPE' not in configuration['variables']:
         return
@@ -56,7 +56,7 @@ def submit_build(configuration, repo_ref, ci_submit_url=None, ci_submit_token=No
     return response.json()['id']
 
 
-def check_build_status(build_id, commit_sha=None, ci_status_url=None, **kwargs):
+def check_job_status(build_id, commit_sha=None, ci_status_url=None, **kwargs):
     """
     Queries status of build.  Note that build_id and repo_ref are strongly tied.
        If a build_id does not exist for a given repo_ref, then you'll get an

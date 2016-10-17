@@ -9,6 +9,14 @@ import pytest
 
 test_data_dir = os.path.join(os.path.dirname(__file__), 'data')
 
+default_meta = {'build': 0,
+                'build_dependencies': {},
+                'run_test_dependencies': {},
+                'version': '1.0',
+                }
+
+build_dict = {'build': True, 'test': False, 'install': False, 'meta': default_meta}
+
 
 @pytest.fixture(scope='function')
 def testing_workdir(tmpdir, request):
@@ -77,14 +85,14 @@ def testing_git_repo(testing_workdir, request):
 @pytest.fixture(scope='function')
 def testing_graph(request):
     g = nx.DiGraph()
-    for x in ['a', 'b', 'c', 'd']:
-        g.add_node(x, version="1.0", build="0")
+    for x in ['a', 'b', 'c', 'd', 'e']:
+        g.add_node(x, build=False, test=False, install=False, meta=default_meta)
     # d depends on c depends on b depends on a
     g.add_edge('b', 'a')
     g.add_edge('c', 'b')
     g.add_edge('d', 'c')
-    g.node['b']['dirty'] = True
-    g.node['b']['meta'] = 'something'
+    g.add_edge('e', 'd')
+    g.node['b']['build'] = True
     return g
 
 
