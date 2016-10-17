@@ -23,51 +23,52 @@ def dask_evaluate(outputs):
     return client.gather(futures)
 
 
-def test_build(mocker):
-    mocker.patch.object(execute, 'submit_build')
-    mocker.patch.object(execute, 'check_build_status')
+def test_job(mocker):
+    mocker.patch.object(execute, 'submit_job')
+    mocker.patch.object(execute, 'check_job_status')
     mocker.patch.object(execute, 'delayed')
-    execute.check_build_status.return_value = 'success'
-    ret = execute._build('something', None, commit_sha='abc')
+    execute.check_job_status.return_value = 'success'
+    ret = execute._job('something', None, commit_sha='abc')
     assert ret == 'abc'
 
     with pytest.raises(Exception):
-        execute.check_build_status.return_value = 'failed'
-        ret = execute._build('something', None, commit_sha='abc')
+        execute.check_job_status.return_value = 'failed'
+        ret = execute._job('something', None, commit_sha='abc')
 
 
-def test_build_passthrough():
-    ret = execute._build({'something': 123}, None, passthrough=True)
+def test_job_passthrough():
+    ret = execute._job({'something': 123}, None, passthrough=True)
     assert ret == {'something': 123}
 
 
-def test_build_wait_and_timeout(mocker):
-    mocker.patch.object(execute, 'submit_build')
-    mocker.patch.object(execute, 'check_build_status')
-    execute.check_build_status.return_value = 'running'
+def test_job_wait_and_timeout(mocker):
+    mocker.patch.object(execute, 'submit_job')
+    mocker.patch.object(execute, 'check_job_status')
+    execute.check_job_status.return_value = 'running'
     now = time.time()
     with pytest.raises(Exception):
-        execute._build('something', None, commit_sha='abc', sleep_interval=0.5, run_timeout=2)
+        execute._job('something', None, commit_sha='abc', sleep_interval=0.5, run_timeout=2)
     assert time.time() - now >= 2.0
 
 
 def test_platform_package_key():
-    assert execute._platform_package_key('frank', {'worker_label': 'steve'}) == 'frank_steve'
+    assert (execute._platform_package_key('build', 'frank', {'worker_label': 'steve'}) ==
+            'build_frank_steve')
 
 
 def test_get_dask_outputs(mocker, testing_graph, testing_conda_resolve):
     mocker.patch.object(execute, 'construct_graph')
     mocker.patch.object(execute, 'Resolve')
     mocker.patch.object(execute, 'get_index')
-    mocker.patch.object(execute, 'expand_dirty')
-    mocker.patch.object(execute, '_build')
+    mocker.patch.object(execute, 'expand_run')
+    mocker.patch.object(execute, '_job')
     mocker.patch.object(execute.subprocess, 'check_call')
     mocker.patch.object(execute.subprocess, 'check_output')
     mocker.patch.object(conda_gitlab_ci.compute_build_graph, '_installable')
     execute.subprocess.check_output.return_value = 'abc'
     execute.construct_graph.return_value = testing_graph
     execute.Resolve.return_value = testing_conda_resolve
-    execute._build.return_value = 'abc'
+    execute._job.return_value = 'abc'
     execute.delayed = lambda x, pure: x
     conda_gitlab_ci.compute_build_graph._installable.return_value = True
     execute.get_dask_outputs(test_data_dir)

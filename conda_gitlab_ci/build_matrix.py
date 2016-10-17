@@ -25,7 +25,7 @@ def set_conda_env_vars(env_dict):
             value = value[0]
         if not value:
             value = ""
-        os.environ[env_var] = value
+        os.environ[env_var] = str(value)
 
     yield
 

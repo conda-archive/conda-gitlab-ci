@@ -5,14 +5,14 @@ from pytest_mock import mocker
 
 import conda_gitlab_ci.compute_build_graph
 from .utils import (testing_workdir, testing_git_repo, testing_graph, testing_conda_resolve,
-                    testing_metadata, make_recipe, test_data_dir)
+                    testing_metadata, make_recipe, test_data_dir, default_meta, build_dict)
 
 graph_data_dir = os.path.join(test_data_dir, 'graph_data')
 
 
 def test_dirty(testing_graph):
     assert (conda_gitlab_ci.compute_build_graph.dirty(testing_graph) ==
-            {'b': {'dirty': True, 'meta': 'something', 'version': "1.0", 'build': "0"}})
+            {'b': build_dict})
 
 
 def test_get_build_deps(testing_metadata):
@@ -29,22 +29,22 @@ def test_construct_graph():
     g = conda_gitlab_ci.compute_build_graph.construct_graph(graph_data_dir, 'some_os', 'somearch',
                                                             folders=('b'))
     assert set(g.nodes()) == set(['a', 'b', 'c', 'd'])
-    assert not any([g.node[dirname]['dirty'] for dirname in ('a', 'c', 'd')])
-    assert g.node['b']['dirty']
+    assert not any([g.node[dirname]['build'] for dirname in ('a', 'c', 'd')])
+    assert g.node['b']['build']
     assert set(g.edges()) == set([('b', 'a'), ('c', 'b'), ('d', 'c')])
 
 
 def test_construct_graph_git_rev(testing_git_repo):
     g = conda_gitlab_ci.compute_build_graph.construct_graph(testing_git_repo, 'some_os', 'somearch')
     assert set(g.nodes()) == set(['test_dir_3', 'test_dir_2', 'test_dir_1'])
-    assert g.node['test_dir_3']['dirty']
-    assert not any([g.node[dirname]['dirty'] for dirname in ('test_dir_1', 'test_dir_2')])
+    assert g.node['test_dir_3']['build']
+    assert not any([g.node[dirname]['build'] for dirname in ('test_dir_1', 'test_dir_2')])
     assert set(g.edges()) == set([('test_dir_2', 'test_dir_1'),
                                   ('test_dir_3', 'test_dir_2')])
     g = conda_gitlab_ci.compute_build_graph.construct_graph(testing_git_repo, 'some_os', 'somearch',
                                                             git_rev="HEAD@{2}", stop_rev="HEAD")
     assert set(g.nodes()) == set(['test_dir_3', 'test_dir_2', 'test_dir_1'])
-    assert all([g.node[dirname]['dirty'] for dirname in ('test_dir_2',
+    assert all([g.node[dirname]['build'] for dirname in ('test_dir_2',
                                                          'test_dir_3')])
     assert set(g.edges()) == set([('test_dir_2', 'test_dir_1'),
                                   ('test_dir_3', 'test_dir_2')])
@@ -52,8 +52,8 @@ def test_construct_graph_git_rev(testing_git_repo):
 def test_construct_graph_relative_path(testing_git_repo):
     g = conda_gitlab_ci.compute_build_graph.construct_graph('.', 'some_os', 'somearch')
     assert set(g.nodes()) == set(['test_dir_3', 'test_dir_2', 'test_dir_1'])
-    assert g.node['test_dir_3']['dirty']
-    assert not any([g.node[dirname]['dirty'] for dirname in ('test_dir_1', 'test_dir_2')])
+    assert g.node['test_dir_3']['build']
+    assert not any([g.node[dirname]['build'] for dirname in ('test_dir_1', 'test_dir_2')])
     assert set(g.edges()) == set([('test_dir_2', 'test_dir_1'),
                                   ('test_dir_3', 'test_dir_2')])
 
@@ -106,9 +106,10 @@ def test_upstream_dependencies_needing_build(mocker, testing_graph, testing_cond
     conda_gitlab_ci.compute_build_graph._installable.return_value = False
     mocker.patch.object(conda_gitlab_ci.compute_build_graph, '_buildable')
     conda_gitlab_ci.compute_build_graph._buildable.return_value = True
-    dirty_nodes = conda_gitlab_ci.compute_build_graph.upstream_dependencies_needing_build(
+    conda_gitlab_ci.compute_build_graph.upstream_dependencies_needing_build(
         testing_graph, testing_conda_resolve)
-    assert dirty_nodes == set(('a', 'b'))
+    assert conda_gitlab_ci.compute_build_graph.dirty(testing_graph) == {'a': build_dict,
+                                                                        'b': build_dict}
 
 
 def test_buildable(monkeypatch):
@@ -122,51 +123,80 @@ def test_buildable(monkeypatch):
 def test_installable(testing_conda_resolve):
     assert conda_gitlab_ci.compute_build_graph._installable('a', "920", testing_conda_resolve)
     assert not conda_gitlab_ci.compute_build_graph._installable('a', "921", testing_conda_resolve)
-    assert not conda_gitlab_ci.compute_build_graph._installable('e', "920", testing_conda_resolve)
+    assert not conda_gitlab_ci.compute_build_graph._installable('f', "920", testing_conda_resolve)
 
 
-def test_expand_dirty_no_up_or_down(mocker, testing_graph, testing_conda_resolve):
+def test_expand_run_no_up_or_down(mocker, testing_graph, testing_conda_resolve):
     mocker.patch.object(conda_gitlab_ci.compute_build_graph, '_installable')
     mocker.patch.object(conda_gitlab_ci.compute_build_graph, '_buildable')
 
     # all packages are installable in the default index
-    conda_gitlab_ci.compute_build_graph.expand_dirty(testing_graph, testing_conda_resolve)
+    conda_gitlab_ci.compute_build_graph.expand_run(testing_graph, testing_conda_resolve, 'build')
     assert len(conda_gitlab_ci.compute_build_graph.dirty(testing_graph)) == 1
 
 
-def test_expand_dirty_step_down(mocker, testing_graph, testing_conda_resolve):
+def test_expand_run_step_down(mocker, testing_graph, testing_conda_resolve):
     mocker.patch.object(conda_gitlab_ci.compute_build_graph, 'upstream_dependencies_needing_build')
     conda_gitlab_ci.compute_build_graph.upstream_dependencies_needing_build.return_value = set(['b'])
-    dirty = conda_gitlab_ci.compute_build_graph.expand_dirty(testing_graph, testing_conda_resolve, steps=1)
-    assert dirty == set(['b', 'c'])
-    dirty = conda_gitlab_ci.compute_build_graph.expand_dirty(testing_graph, testing_conda_resolve, steps=2)
-    assert dirty == set(['b', 'c', 'd'])
+    dirty = conda_gitlab_ci.compute_build_graph.expand_run(testing_graph, testing_conda_resolve,
+                                                           'build', steps=1)
+    assert dirty == {'b': build_dict, 'c': build_dict}
 
-def test_expand_raises_when_neither_installable_or_buildable(mocker, testing_graph, testing_conda_resolve):
+
+def test_expand_run_two_steps_down(mocker, testing_graph, testing_conda_resolve):
+    mocker.patch.object(conda_gitlab_ci.compute_build_graph, 'upstream_dependencies_needing_build')
+    conda_gitlab_ci.compute_build_graph.upstream_dependencies_needing_build.return_value = set(['b'])
+    # second expansion - one more layer out
+    dirty = conda_gitlab_ci.compute_build_graph.expand_run(testing_graph, testing_conda_resolve,
+                                                           'build', steps=2)
+    assert dirty == {'b': build_dict, 'c': build_dict, 'd': build_dict}
+
+
+def test_expand_run_all_steps_down(mocker, testing_graph, testing_conda_resolve):
+    mocker.patch.object(conda_gitlab_ci.compute_build_graph, 'upstream_dependencies_needing_build')
+    conda_gitlab_ci.compute_build_graph.upstream_dependencies_needing_build.return_value = set(['b'])
+    dirty = conda_gitlab_ci.compute_build_graph.expand_run(testing_graph, testing_conda_resolve,
+                                                           'build', steps=-1)
+    assert dirty == {'b': build_dict, 'c': build_dict, 'd': build_dict, 'e': build_dict}
+
+
+def test_expand_run_all_steps_down_with_max(mocker, testing_graph, testing_conda_resolve):
+    mocker.patch.object(conda_gitlab_ci.compute_build_graph, 'upstream_dependencies_needing_build')
+    conda_gitlab_ci.compute_build_graph.upstream_dependencies_needing_build.return_value = set(['b'])
+    dirty = conda_gitlab_ci.compute_build_graph.expand_run(testing_graph, testing_conda_resolve,
+                                                           'build', steps=-1, max_downstream=1)
+    assert dirty == {'b': build_dict, 'c': build_dict}
+
+
+def test_expand_raises_when_neither_installable_or_buildable(mocker, testing_graph,
+                                                             testing_conda_resolve):
     mocker.patch.object(conda_gitlab_ci.compute_build_graph, '_installable')
     mocker.patch.object(conda_gitlab_ci.compute_build_graph, '_buildable')
     conda_gitlab_ci.compute_build_graph._installable.return_value = False
     conda_gitlab_ci.compute_build_graph._buildable.return_value = False
     with pytest.raises(ValueError):
-        conda_gitlab_ci.compute_build_graph.expand_dirty(testing_graph, testing_conda_resolve)
+        conda_gitlab_ci.compute_build_graph.expand_run(testing_graph, testing_conda_resolve,
+                                                       'build')
 
 
-def test_expand_dirty_build_non_installable_prereq(mocker, testing_graph, testing_conda_resolve):
+def test_expand_run_build_non_installable_prereq(mocker, testing_graph, testing_conda_resolve):
     mocker.patch.object(conda_gitlab_ci.compute_build_graph, '_installable')
     mocker.patch.object(conda_gitlab_ci.compute_build_graph, '_buildable')
     conda_gitlab_ci.compute_build_graph._installable.return_value = False
     conda_gitlab_ci.compute_build_graph._buildable.return_value = True
-    dirty = conda_gitlab_ci.compute_build_graph.expand_dirty(testing_graph, testing_conda_resolve)
-    assert dirty == set(['a', 'b'])
-    dirty = conda_gitlab_ci.compute_build_graph.expand_dirty(testing_graph, testing_conda_resolve, steps=1)
-    assert dirty == set(['a', 'b', 'c'])
+    dirty = conda_gitlab_ci.compute_build_graph.expand_run(testing_graph, testing_conda_resolve,
+                                                           'build')
+    assert dirty == {'a': build_dict, 'b': build_dict}
+    dirty = conda_gitlab_ci.compute_build_graph.expand_run(testing_graph, testing_conda_resolve,
+                                                           'build', steps=1)
+    assert dirty == {'a': build_dict, 'b': build_dict, 'c': build_dict}
 
 
 
 def test_order_build_no_filter(testing_graph):
     g, order = conda_gitlab_ci.compute_build_graph.order_build(testing_graph,
                                                                filter_dirty=False)
-    assert order == ['a', 'b', 'c', 'd']
+    assert order == ['a', 'b', 'c', 'd', 'e']
 
     with pytest.raises(ValueError):
         testing_graph.add_edge('a', 'd')

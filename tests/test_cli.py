@@ -21,7 +21,8 @@ def test_default_args(mocker):
     cli.build_cli(args)
     cli.get_dask_outputs.assert_called_with(test_data_dir, filter_dirty=True,
                                             git_rev='HEAD', stop_rev=None,
-                                            packages=[], steps=0, visualize='')
+                                            packages=[], steps=0, visualize='',
+                                            test=False, max_downstream=5)
 
 
 def test_visualize_generates_output_file(mocker, testing_workdir):
